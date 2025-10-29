@@ -1,0 +1,16 @@
+[package]
+name = "plentys"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "plentys"
+path = "src/main.rs"
+
+[dependencies]
+plenty-common = { path = "../common" }
+rusqlite.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true

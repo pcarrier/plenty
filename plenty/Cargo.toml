@@ -1,0 +1,16 @@
+[package]
+name = "plenty"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "plenty"
+path = "src/main.rs"
+
+[dependencies]
+plenty-common = { path = "../common" }
+anyhow.workspace = true
+thiserror.workspace = true
+nix = { version = "0.29", features = ["fs"] }

@@ -1,0 +1,14 @@
+[workspace]
+members = ["plenty", "plentys", "common"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["plenty contributors"]
+license = "MIT"
+
+[workspace.dependencies]
+rusqlite = { version = "0.31", features = ["bundled"] }
+anyhow = "1.0"
+thiserror = "1.0"
