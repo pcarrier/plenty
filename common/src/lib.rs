@@ -1,5 +1,5 @@
 /// TLV (Type-Length-Value) protocol implementation for plenty
-use std::io::{Read, Write, Result as IoResult, Error, ErrorKind};
+use std::io::{Error, ErrorKind, Read, Result as IoResult, Write};
 
 /// Message types in the TLV protocol
 #[repr(u8)]
@@ -18,7 +18,7 @@ pub enum MessageType {
 impl TryFrom<u8> for MessageType {
     type Error = anyhow::Error;
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
+    fn try_from(value: u8) -> Result<Self, <Self as TryFrom<u8>>::Error> {
         match value {
             1 => Ok(MessageType::HistoryEntry),
             2 => Ok(MessageType::GetHistory),
@@ -118,7 +118,8 @@ impl HistoryEntry {
         if data.len() < pos + 4 {
             return Err(anyhow::anyhow!("Invalid data: too short for cmd length"));
         }
-        let cmd_len = u32::from_be_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
+        let cmd_len =
+            u32::from_be_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
         pos += 4;
 
         if data.len() < pos + cmd_len {
@@ -132,8 +133,14 @@ impl HistoryEntry {
             return Err(anyhow::anyhow!("Invalid data: too short for when"));
         }
         let when = i64::from_be_bytes([
-            data[pos], data[pos + 1], data[pos + 2], data[pos + 3],
-            data[pos + 4], data[pos + 5], data[pos + 6], data[pos + 7],
+            data[pos],
+            data[pos + 1],
+            data[pos + 2],
+            data[pos + 3],
+            data[pos + 4],
+            data[pos + 5],
+            data[pos + 6],
+            data[pos + 7],
         ]);
         pos += 8;
 
@@ -141,7 +148,8 @@ impl HistoryEntry {
         if data.len() < pos + 4 {
             return Err(anyhow::anyhow!("Invalid data: too short for extra length"));
         }
-        let extra_len = u32::from_be_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
+        let extra_len =
+            u32::from_be_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
         pos += 4;
 
         if data.len() < pos + extra_len {

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use plenty_common::{HistoryEntry, Message, MessageType};
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use std::io::{stdin, stdout, BufReader, BufWriter};
 use std::path::PathBuf;
 
@@ -14,30 +14,30 @@ fn main() -> Result<()> {
     };
 
     // Create directory if it doesn't exist
-    std::fs::create_dir_all(&data_dir)
-        .context("Failed to create plenty directory")?;
+    std::fs::create_dir_all(&data_dir).context("Failed to create plenty directory")?;
 
     let db_path = data_dir.join("history.db");
 
     // Open/create database
-    let conn = Connection::open(&db_path)
-        .context("Failed to open database")?;
+    let conn = Connection::open(&db_path).context("Failed to open database")?;
 
     // Create table if it doesn't exist
     conn.execute(
         "CREATE TABLE IF NOT EXISTS history (
-            cmd TEXT,
-            \"when\" INTEGER,
-            extra TEXT
+          \"when\" INTEGER,
+          cmd TEXT,
+          extra TEXT
         )",
         [],
-    ).context("Failed to create history table")?;
+    )
+    .context("Failed to create history table")?;
 
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_history_unique
          ON history(cmd, \"when\", extra)",
         [],
-    ).context("Failed to create unique index")?;
+    )
+    .context("Failed to create unique index")?;
 
     let stdin = stdin();
     let stdout = stdout();
@@ -92,17 +92,15 @@ fn main() -> Result<()> {
             }
             MessageType::GetHistory => {
                 // Send all history back to client
-                let mut stmt = conn.prepare(
-                    "SELECT cmd, \"when\", extra FROM history ORDER BY \"when\" ASC"
-                ).context("Failed to prepare select statement")?;
+                let mut stmt = conn
+                    .prepare("SELECT cmd, \"when\", extra FROM history ORDER BY \"when\" ASC")
+                    .context("Failed to prepare select statement")?;
 
-                let entries = stmt.query_map([], |row| {
-                    Ok(HistoryEntry::new(
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                    ))
-                }).context("Failed to query history")?;
+                let entries = stmt
+                    .query_map([], |row| {
+                        Ok(HistoryEntry::new(row.get(0)?, row.get(1)?, row.get(2)?))
+                    })
+                    .context("Failed to query history")?;
 
                 for entry_result in entries {
                     match entry_result {
@@ -119,7 +117,8 @@ fn main() -> Result<()> {
 
                 // Send end marker
                 let end_msg = Message::new(MessageType::End, Vec::new());
-                end_msg.write_to(&mut writer)
+                end_msg
+                    .write_to(&mut writer)
                     .context("Failed to write end marker")?;
             }
             MessageType::End => {
@@ -127,8 +126,10 @@ fn main() -> Result<()> {
                 break;
             }
             MessageType::Error => {
-                eprintln!("Received error from client: {}",
-                    String::from_utf8_lossy(&msg.data));
+                eprintln!(
+                    "Received error from client: {}",
+                    String::from_utf8_lossy(&msg.data)
+                );
                 break;
             }
         }
