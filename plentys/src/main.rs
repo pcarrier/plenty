@@ -4,6 +4,40 @@ use rusqlite::{params, Connection};
 use std::io::{stdin, stdout, BufReader, BufWriter};
 use std::path::PathBuf;
 
+const INSERT_BATCH_SIZE: usize = 100;
+
+fn flush_pending_entries(conn: &mut Connection, pending: &mut Vec<HistoryEntry>) -> Result<()> {
+    if pending.is_empty() {
+        return Ok(());
+    }
+
+    let tx = conn
+        .transaction()
+        .context("Failed to begin transaction for batched history insert")?;
+
+    {
+        let mut stmt = tx
+            .prepare("INSERT OR IGNORE INTO history (cmd, \"when\", extra) VALUES (?1, ?2, ?3)")
+            .context("Failed to prepare batched history insert statement")?;
+
+        for entry in pending.iter() {
+            stmt.execute(params![&entry.cmd, entry.when, &entry.extra])
+                .with_context(|| {
+                    format!(
+                        "Failed to insert history entry during batch (cmd='{}')",
+                        &entry.cmd
+                    )
+                })?;
+        }
+    }
+
+    tx.commit()
+        .context("Failed to commit batched history insert transaction")?;
+    pending.clear();
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     // Set up database path - respect XDG_DATA_HOME
     let data_dir = if let Ok(xdg_data_home) = std::env::var("XDG_DATA_HOME") {
@@ -19,7 +53,7 @@ fn main() -> Result<()> {
     let db_path = data_dir.join("history.db");
 
     // Open/create database
-    let conn = Connection::open(&db_path).context("Failed to open database")?;
+    let mut conn = Connection::open(&db_path).context("Failed to open database")?;
 
     // Create table if it doesn't exist
     conn.execute(
@@ -43,6 +77,7 @@ fn main() -> Result<()> {
     let stdout = stdout();
     let mut reader = BufReader::new(stdin.lock());
     let mut writer = BufWriter::new(stdout.lock());
+    let mut pending_entries: Vec<HistoryEntry> = Vec::new();
 
     // Process incoming messages
     loop {
@@ -68,16 +103,16 @@ fn main() -> Result<()> {
                 // Decode and insert history entry
                 match HistoryEntry::decode(&msg.data) {
                     Ok(entry) => {
-                        if let Err(e) = conn.execute(
-                            "INSERT OR IGNORE INTO history (cmd, \"when\", extra) VALUES (?1, ?2, ?3)",
-                            params![entry.cmd, entry.when, entry.extra],
-                        ) {
-                            eprintln!("Error inserting history entry: {}", e);
-                            let error_msg = Message::new(
-                                MessageType::Error,
-                                format!("Error inserting history: {}", e).into_bytes(),
-                            );
-                            let _ = error_msg.write_to(&mut writer);
+                        pending_entries.push(entry);
+                        if pending_entries.len() >= INSERT_BATCH_SIZE {
+                            if let Err(e) = flush_pending_entries(&mut conn, &mut pending_entries) {
+                                eprintln!("Error inserting history entry batch: {}", e);
+                                let error_msg = Message::new(
+                                    MessageType::Error,
+                                    format!("Error inserting history batch: {}", e).into_bytes(),
+                                );
+                                let _ = error_msg.write_to(&mut writer);
+                            }
                         }
                     }
                     Err(e) => {
@@ -91,6 +126,16 @@ fn main() -> Result<()> {
                 }
             }
             MessageType::GetHistory => {
+                if let Err(e) = flush_pending_entries(&mut conn, &mut pending_entries) {
+                    eprintln!("Error flushing pending history before read: {}", e);
+                    let error_msg = Message::new(
+                        MessageType::Error,
+                        format!("Error preparing history read: {}", e).into_bytes(),
+                    );
+                    let _ = error_msg.write_to(&mut writer);
+                    continue;
+                }
+
                 // Send all history back to client
                 let mut stmt = conn
                     .prepare("SELECT cmd, \"when\", extra FROM history ORDER BY \"when\" ASC")
@@ -134,6 +179,9 @@ fn main() -> Result<()> {
             }
         }
     }
+
+    flush_pending_entries(&mut conn, &mut pending_entries)
+        .context("Failed to flush pending history entries before shutdown")?;
 
     Ok(())
 }
