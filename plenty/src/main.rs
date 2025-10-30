@@ -193,6 +193,22 @@ fn sync_with_server(host: &str, history_path: &PathBuf, history_file: &File) -> 
     file.write_all(new_content.as_bytes())
         .context("Failed to write fish_history")?;
 
+    file
+        .sync_all()
+        .context("Failed to sync fish_history to disk")?;
+
+    drop(file);
+
+    eprintln!("Running 'fish -c \"history merge\"' to refresh fish state…");
+    let status = Command::new("fish")
+        .args(["-c", "history merge"])
+        .status()
+        .context("Failed to execute fish history merge")?;
+
+    if !status.success() {
+        bail!("fish history merge exited with status: {}", status);
+    }
+
     eprintln!("Sync complete!");
 
     Ok(())
